@@ -109,3 +109,15 @@ function Get-Inventory {
 }
 
 Get-Inventory | Tee-Object -FilePath "results\inventory.txt"
+
+#Get Installed Applications 
+Write-Output "----------- Installed Applications -----------"
+# Get 32-bit and 64-bit installed applications
+$installedApps32Bit = Get-ItemProperty HKLM:\Software\Wow6432Node\Microsoft\Windows\CurrentVersion\Uninstall\*
+$installedApps64Bit = Get-ItemProperty HKLM:\Software\Microsoft\Windows\CurrentVersion\Uninstall\*
+
+# Combine the results and select relevant properties
+$installedApps = $installedApps32Bit + $installedApps64Bit | Where-Object { $_.DisplayName -ne $null } | Select-Object DisplayName, DisplayVersion, Publisher, InstallDate
+
+# Output the list of installed applications
+$installedApps
