@@ -116,8 +116,9 @@ Write-Output "----------- Installed Applications -----------"
 $installedApps32Bit = Get-ItemProperty HKLM:\Software\Wow6432Node\Microsoft\Windows\CurrentVersion\Uninstall\*
 $installedApps64Bit = Get-ItemProperty HKLM:\Software\Microsoft\Windows\CurrentVersion\Uninstall\*
 
-# Combine the results and select relevant properties
-$installedApps = $installedApps32Bit + $installedApps64Bit | Where-Object { $_.DisplayName -ne $null } | Select-Object DisplayName, DisplayVersion, Publisher, InstallDate
+# Combine the results and select relevant properties including the file path
+$installedApps = $installedApps32Bit + $installedApps64Bit | Where-Object { $_.DisplayName -ne $null } | Select-Object DisplayName, DisplayVersion, Publisher, InstallDate, InstallLocation
 
-# Output the list of installed applications
+# Output the list of installed applications with file paths
 $installedApps
+
