@@ -106,19 +106,24 @@ function Get-Inventory {
     }
 
     # If CA, list certificates?
+    
+    #Get Installed Applications 
+    Write-Output "----------- Installed Applications -----------"
+    # Get 32-bit and 64-bit installed applications
+    $installedApps32Bit = Get-ItemProperty HKLM:\Software\Wow6432Node\Microsoft\Windows\CurrentVersion\Uninstall\*
+    $installedApps64Bit = Get-ItemProperty HKLM:\Software\Microsoft\Windows\CurrentVersion\Uninstall\*
+    $installedAppsUser = Get-ItemProperty HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\*
+    # Combine the results and select relevant properties including the file path
+    $installedApps = $installedApps32Bit + $installedApps64Bit + $installedAppsUser | Where-Object { $_.DisplayName -ne $null } | Select-Object DisplayName, DisplayVersion, Publisher, InstallDate, InstallLocation
+
+    # Output the list of installed applications with file paths
+    $installedApps
+
+    Write-Output "----------- Installed Roles and Features -----------"
+    Get-WindowsFeature | Where-Object {$_.InstallState -eq "Installed"}
 }
 
 Get-Inventory | Tee-Object -FilePath "results\inventory.txt"
 
-#Get Installed Applications 
-Write-Output "----------- Installed Applications -----------"
-# Get 32-bit and 64-bit installed applications
-$installedApps32Bit = Get-ItemProperty HKLM:\Software\Wow6432Node\Microsoft\Windows\CurrentVersion\Uninstall\*
-$installedApps64Bit = Get-ItemProperty HKLM:\Software\Microsoft\Windows\CurrentVersion\Uninstall\*
 
-# Combine the results and select relevant properties including the file path
-$installedApps = $installedApps32Bit + $installedApps64Bit | Where-Object { $_.DisplayName -ne $null } | Select-Object DisplayName, DisplayVersion, Publisher, InstallDate, InstallLocation
-
-# Output the list of installed applications with file paths
-$installedApps
 
