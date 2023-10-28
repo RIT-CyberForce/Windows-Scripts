@@ -64,6 +64,7 @@ if ($boxes -contains $boxName) {
     (New-Object System.Net.WebClient).DownloadFile("https://raw.githubusercontent.com/RIT-CyberForce/Windows-Scripts/main/inventory.ps1", (Join-Path -Path $ScriptPath -ChildPath "inventory.ps1"))
     Write-Host "[" -ForegroundColor white -NoNewLine; Write-Host "SUCCESS" -ForegroundColor green -NoNewLine; Write-Host "] Monitoring scripts, config files, and Wazuh files downloaded" -ForegroundColor white
 
+    # notepad++ b/c vscode is now a C2
 
     # everyone needs sysinternals
     (New-Object System.Net.WebClient).DownloadFile("https://download.sysinternals.com/files/Autoruns.zip", (Join-Path -Path $InputPath -ChildPath "ar.zip"))
