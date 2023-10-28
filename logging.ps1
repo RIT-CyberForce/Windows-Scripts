@@ -34,6 +34,9 @@ if (Get-CimInstance -Class Win32_OperatingSystem -Filter 'ProductType = "2"') {
     Write-Host "[INFO] DNS Server logging configured"
 }
 
+wevtutil sl Microsoft-Windows-DNS-Client/Operational /e:true
+Write-Host "[INFO] DNS Client logging enabled"
+
 # IIS logging
 if (Get-Service -Name W3SVC 2>$null) {
     try {
@@ -57,3 +60,4 @@ Start-Process -FilePath ..\installers\wazuhagent.msi /q WAZUH_MANAGER="10.0.136.
 Remove-Item "C:\Program Files (x86)\ossec-agent\ossec.conf" -Force
 Copy-Item -Path "conf\ossec_windows.conf" -Destination "C:\Program Files (x86)\ossec-agent\ossec.conf"
 net start Wazuh
+Write-Host "[INFO] Wazuh installed and configured"
