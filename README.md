@@ -6,6 +6,7 @@
 │   │   ├── wc-member-client-v_.inf (or wc-dc-v_.inf)
 │   │   ├── (GUID of client GPO or GUID of dc GPO)
 │   │   ├── def-eg-settings.xml
+│   │   ├── ossec_windows.conf
 │   │   └── wc-auditpol-v_.csv
 │   ├── results
 │   │   ├── artifacts
