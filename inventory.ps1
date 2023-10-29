@@ -85,7 +85,6 @@ function Get-Inventory {
     Write-Output "----------- SMB Shares -----------"
     net share
 
-    # TODO: TEST
     # If IIS, site bindings
     if ($IIS) {
         Write-Output "----------- IIS Site Bindings -----------"
