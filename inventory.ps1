@@ -119,7 +119,7 @@ function Get-Inventory {
     $installedApps
 
     Write-Output "----------- Installed Roles and Features -----------"
-    Get-WindowsFeature | Where-Object {$_.InstallState -eq "Installed"}
+    Get-WindowsFeature | Where-Object {$_.InstallState -eq "Installed"} | Format-Table Name,Path
 }
 
 Get-Inventory | Tee-Object -FilePath "results\inventory.txt"
