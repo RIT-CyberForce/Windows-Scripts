@@ -39,7 +39,7 @@ Function Show-Firewall{#good
 }
 
 Function Process-Audit{#good
-    $processList = Get-Process -IncludeUserName
+    $processList = Get-Process -IncludeUserName | Format-List
     Write-Output "Process List with Usernames: "
     Write-Output "$($processList)"
 }
@@ -51,7 +51,7 @@ Function Hidden-Services{#not good
 }
 
 Function Scheduled-Tasks{#good
-    $scheduled = Get-ScheduledTask
+    $scheduled = Get-ScheduledTask | Format-List
     Write-Output "Scheduled Task List: "
     Write-Output "$($scheduled)"
 }
@@ -200,12 +200,12 @@ Function Random-Directories{
 }
 
 Function Exporting-Sec-Policy{
-    SecEdit /export /cfg c:/old_secpol.cfg
+    SecEdit /export /cfg artifacts\old_secpol.cfg
 }
 
 Function Current-local-gpo{
     # Use auditpol to get the current local gpo
-    gpresult /h LocalGrpPolReport.html
+    gpresult /h artifacts\LocalGrpPolReport.html
 }
 
 Function Programs-Registry{
@@ -214,9 +214,7 @@ Function Programs-Registry{
 }
 
 Function Unsigned-Files{
-    cd ../tools/sys/sc
-    sigcheck64 -accepteula -u -e c:\windows\system32
-    cd ../../../scripts
+    ..\tools\sys\sc\sigcheck64 -accepteula -u -e c:\windows\system32
 }
 
 Function Ripper{
@@ -265,24 +263,24 @@ Function Ripper{
             Write-Output "Name: $($Service.Name) - Display Name: $($Service.DisplayName) - Status: $($Service.State) - StartName: $($Service.StartName) - Description: $($Service.Description) - Binary Path: $($Service.PathName.Trim('"'))"
             # Output verbose information about each suspicious characteristic
             if ($PathSuspicious) {
-                Write-Output "`t- Running from a potentially suspicious path"
+                Write-Output "`t- Running from a potentially suspicious path`n"
             }
             if ($LocalSystemAccount) {
-                Write-Output "`t- Running with a LocalSystem account"
+                Write-Output "`t- Running with a LocalSystem account`n"
             }
             if ($NoDescription) {
-                Write-Output "`t- No description provided"
+                Write-Output "`t- No description provided`n"
             }
             if ($Unsigned) {
-                Write-Output "`t- Unsigned executable"
+                Write-Output "`t- Unsigned executable`n"
             }
             if ($SuspiciousExtension) {
-                Write-Output "`t- Suspicious file extension"
+                Write-Output "`t- Suspicious file extension`n"
             }
             Write-Output ""
         }
     } else {
-        Write-Output "No potentially suspicious services detected."
+        Write-Output "No potentially suspicious services detected.`n"
     }
 }
 #only if server 
@@ -332,10 +330,10 @@ Function Service-CMD-Line{
         }
 
         # Output service information
-        Write-Output "Service Name: $serviceName"
-        Write-Output "Service Status: $serviceStatus"
-        Write-Output "Command Line Arguments: $serviceCommand"
-        Write-Output "-----------------------------------"
+        Write-Output "`nService Name: $serviceName"
+        Write-Output "`nService Status: $serviceStatus"
+        Write-Output "`nCommand Line Arguments: $serviceCommand"
+        Write-Output "`n-----------------------------------"
     }
 }
 
@@ -374,7 +372,8 @@ Function Recently-Run-Commands{
 }
 
 function Get-ConsoleHostHistory {
-    $historyFilePath = "$env:APPDATA\Microsoft\Windows\PowerShell\consolehost-history.txt"
+    Write-Output $(Get-Content (Get-PSReadLineOption).HistorySavePath | Select-String pa)
+    $historyFilePath = "$env:APPDATA\Microsoft\Windows\PowerShell\PSReadline\ConsoleHost_history.txt"
     if (Test-Path $historyFilePath) {
         try {
             $historyContent = Get-Content -Path $historyFilePath
