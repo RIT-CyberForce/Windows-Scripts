@@ -26,16 +26,7 @@ reg add "HKLM\SYSTEM\CurrentControlSet\Control\Terminal Server\WinStations\RDP-T
 reg add "HKLM\SYSTEM\CurrentControlSet\Control\Lsa" /v DisableRestrictedAdmin /t REG_DWORD /d 0 /f | Out-Null
 Write-Host "[INFO] RDP hardening in place"
 
-# Disabling RDP (only if not needed)
-reg add "HKLM\SYSTEM\CurrentControlSet\Control\Terminal Server" /v fDenyTSConnections /t REG_DWORD /d 1 /f
-Write-Host "[INFO] RDP disabled"
-
-# Disabling WinRM
-Disable-PSRemoting -Force
-Stop-Service WinRM -PassThruSet-Service WinRM -StartupType Disabled
-Remove-Item -Path WSMan:\Localhost\listener\listener* -Recurse
-Write-Host "[INFO] WinRM disabled and listeners removed"
-
+# TODO: DO NOT UNINSTALL SSH ON MACHINES
 # Uninstalling SSH
 Remove-WindowsCapability -Online -Name "OpenSSH.Client~~~~0.0.1.0"
 Remove-WindowsCapability -Online -Name "OpenSSH.Server~~~~0.0.1.0"
@@ -459,24 +450,24 @@ if ($DC) {
 
 # IIS security
 if ($IIS) {
-    # Set application privileges to minimum
-    Foreach($item in (Get-ChildItem IIS:\AppPools)) { $tempPath="IIS:\AppPools\"; $tempPath+=$item.name; Set-ItemProperty -Path $tempPath -name processModel.identityType -value 4}
+    # # Set application privileges to minimum
+    # Foreach($item in (Get-ChildItem IIS:\AppPools)) { $tempPath="IIS:\AppPools\"; $tempPath+=$item.name; Set-ItemProperty -Path $tempPath -name processModel.identityType -value 4}
 
-    # Disable directory browsing
-    ForEach ($site in (Get-ChildItem IIS:\Sites)) {
-        C:\Windows\System32\inetsrv\appcmd.exe set config $site.name -section:system.webServer/directoryBrowse /enabled:"False"
-    } 
+    # # Disable directory browsing
+    # ForEach ($site in (Get-ChildItem IIS:\Sites)) {
+    #     C:\Windows\System32\inetsrv\appcmd.exe set config $site.name -section:system.webServer/directoryBrowse /enabled:"False"
+    # } 
 
-    Set-WebConfiguration //System.WebServer/Security/Authentication/anonymousAuthentication -metadata overrideMode -value Allow -PSPath IIS:/
-    # Disable Anonymous Authenitcation
-    Foreach($item in (Get-ChildItem IIS:\Sites)) { $tempPath="IIS:\Sites\"; $tempPath+=$item.name; Set-WebConfiguration -filter /system.webServer/security/authentication/anonymousAuthentication $tempPath -value 0}
-    #Deny Powershell to Write the anonymousAuthentication value
-    Set-WebConfiguration //System.WebServer/Security/Authentication/anonymousAuthentication -metadata overrideMode -value Deny-PSPath IIS:/
+    # Set-WebConfiguration //System.WebServer/Security/Authentication/anonymousAuthentication -metadata overrideMode -value Allow -PSPath IIS:/
+    # # Disable Anonymous Authenitcation
+    # Foreach($item in (Get-ChildItem IIS:\Sites)) { $tempPath="IIS:\Sites\"; $tempPath+=$item.name; Set-WebConfiguration -filter /system.webServer/security/authentication/anonymousAuthentication $tempPath -value 0}
+    # #Deny Powershell to Write the anonymousAuthentication value
+    # Set-WebConfiguration //System.WebServer/Security/Authentication/anonymousAuthentication -metadata overrideMode -value Deny-PSPath IIS:/
 
-    # reg add "HKLM\Software\Microsoft\WebManagement\Server" /v EnableRemoteManagement /t REG_DWORD /d 1 /f | Out-Null
-    # net start WMSVC | Out-Null
-    # sc.exe config WMSVC start= auto | Out-Null
-    Write-Host "[INFO] Most of IIS security set"
+    # # reg add "HKLM\Software\Microsoft\WebManagement\Server" /v EnableRemoteManagement /t REG_DWORD /d 1 /f | Out-Null
+    # # net start WMSVC | Out-Null
+    # # sc.exe config WMSVC start= auto | Out-Null
+    # Write-Host "[INFO] Most of IIS security set"
 }
 
 # CA security?

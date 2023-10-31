@@ -200,12 +200,12 @@ Function Random-Directories{
 }
 
 Function Exporting-Sec-Policy{
-    SecEdit /export /cfg artifacts\old_secpol.cfg
+    SecEdit /export /cfg "results\artifacts\old_secpol.cfg"
 }
 
 Function Current-local-gpo{
     # Use auditpol to get the current local gpo
-    gpresult /h artifacts\LocalGrpPolReport.html
+    gpresult /h "results\artifacts\LocalGrpPolReport.html"
 }
 
 Function Programs-Registry{
@@ -571,3 +571,5 @@ $aclfunction = Get-Registry-ACL
 $aclfunction = Get-ScheduledTask-ACL
 $aclfunction = Get-Startup-ACL
 $aclfunction | Out-File -FilePath $aclPath
+
+#TODO: Print user properties
