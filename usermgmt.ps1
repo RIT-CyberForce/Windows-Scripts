@@ -16,6 +16,15 @@ if (Get-CimInstance -Class Win32_OperatingSystem -Filter 'ProductType = "2"') {
     Write-Host "[INFO] Domain Controller Detected"
 }
 
+Function Set-krbtgt-Password([bool] $IsDC) {
+    Clear-Host
+    if ($IsDC) {
+        # insert code to flick krbtgt password here
+    } else {
+        Write-Host "[ERROR] Computer is not a domain controller"
+        exit
+    }
+}
 Function Set-Password([string]$UserName, [bool]$IsDC) {
     Clear-Host
     $Password = Read-Host -AsSecureString "Password"

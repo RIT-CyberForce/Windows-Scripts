@@ -26,11 +26,274 @@ reg add "HKLM\SYSTEM\CurrentControlSet\Control\Terminal Server\WinStations\RDP-T
 reg add "HKLM\SYSTEM\CurrentControlSet\Control\Lsa" /v DisableRestrictedAdmin /t REG_DWORD /d 0 /f | Out-Null
 Write-Host "[INFO] RDP hardening in place"
 
-# TODO: DO NOT UNINSTALL SSH ON MACHINES
-# Uninstalling SSH
-Remove-WindowsCapability -Online -Name "OpenSSH.Client~~~~0.0.1.0"
-Remove-WindowsCapability -Online -Name "OpenSSH.Server~~~~0.0.1.0"
-Write-Host "[INFO] SSH Client and Server removed"
+# Disabling RDP (only if not needed)
+# reg add "HKLM\SYSTEM\CurrentControlSet\Control\Terminal Server" /v fDenyTSConnections /t REG_DWORD /d 1 /f
+# Write-Host "[INFO] RDP disabled"
+
+# Disabling WinRM
+# Disable-PSRemoting -Force
+# Remove-Item -Path WSMan:\Localhost\listener\listener* -Recurse
+# Stop-Service WinRM -PassThru
+# Set-Service WinRM -StartupType Disabled -PassThru
+# Write-Host "[INFO] WinRM disabled and listeners removed"
+
+# Uninstalling SSH? 
+# Remove-WindowsCapability -Online -Name "OpenSSH.Client~~~~0.0.1.0"
+# Remove-WindowsCapability -Online -Name "OpenSSH.Server~~~~0.0.1.0"
+# Write-Host "[INFO] SSH Client and Server removed"
+
+Function Write-Results {
+    Param
+        (
+            [Parameter(Position=0,Mandatory=$true)]
+            [string]$Path,
+    
+            [Parameter(Position=1,Mandatory=$true)]
+            [string]$Domain
+        )
+         $Acl = Get-Acl -Path $Path 
+            Write-Host $Domain -ForegroundColor DarkRed -BackgroundColor White
+            Write-Host ($Path.Substring($Path.IndexOf(":") + 1)) -ForegroundColor DarkRed -BackgroundColor White
+            Write-Output -InputObject $Acl.Access
+         }
+    
+    Function Set-Auditing {
+        Param (
+            [Parameter(Position=0,Mandatory=$true)]
+            [string]$Domain,
+    
+            [Parameter(Position=1,Mandatory=$true)]
+            [AllowEmptyString()]
+            [String]$ObjectCN,
+    
+            [Parameter(Position=2,Mandatory=$true)]
+            [System.DirectoryServices.ActiveDirectoryAuditRule[]]$Rules 
+        )
+    
+        $DN = (Get-ADDomain -Identity $Domain).DistinguishedName
+        [String[]]$Drives = Get-PSDrive | Select-Object -ExpandProperty Name
+    
+        $TempDrive = "tempdrive"
+    
+                    if ($Drives.Contains($TempDrive))
+                    {
+                        Write-Host "An existing PSDrive exists with name $TempDrive, temporarily removing" -ForegroundColor Yellow
+                        $OldDrive = Get-PSDrive -Name $TempDrive
+                        Remove-PSDrive -Name $TempDrive
+                    }
+    
+                    $Drive = New-PSDrive -Name $TempDrive -Root "" -PSProvider ActiveDirectory -Server $Domain
+                    Push-Location -Path "$Drive`:\"
+    
+    
+    
+    
+        if ($ObjectCN -eq "") {
+            $ObjectDN = $DN
+        } else {
+            $ObjectDN = $ObjectCN + "," + $DN
+        }
+    
+        $ObjectToChange = Get-ADObject -Identity $ObjectDN -Server $Domain
+        $Path = $ObjectToChange.DistinguishedName
+    
+        try {
+            $Acl = Get-Acl -Path $Path -Audit
+    
+            if ($Acl -ne $null) {
+                foreach ($Rule in $Rules) {
+                    $Acl.AddAuditRule($Rule)
+                }
+    
+                Set-Acl -Path $Path -AclObject $Acl
+                # Write-Results -Path $Path -Domain $Domain
+            } else {
+                Write-Warning "Could not retrieve the ACL for $Path"
+            }
+        } catch [System.Exception] {
+            Write-Warning $_.ToString()
+        }
+    
+        Pop-Location
+    
+                    Remove-PSDrive $Drive
+    
+                    if ($OldDrive -ne $null)
+                    {
+                        Write-Host "Recreating original PSDrive" -ForegroundColor Yellow
+                        New-PSDrive -Name $OldDrive.Name -PSProvider $OldDrive.Provider -Root $OldDrive.Root | Out-Null
+                        $OldDrive = $null
+                    }
+    
+    }
+Function New-EveryoneAuditRuleSet {
+    $Everyone = New-Object System.Security.Principal.SecurityIdentifier([System.Security.Principal.WellKnownSidType]::WorldSid, $null)
+
+    $EveryoneFail = New-Object System.DirectoryServices.ActiveDirectoryAuditRule($Everyone, 
+        [System.DirectoryServices.ActiveDirectoryRights]::GenericAll, 
+        [System.Security.AccessControl.AuditFlags]::Failure, 
+        [System.DirectoryServices.ActiveDirectorySecurityInheritance]::None)
+
+    $EveryoneSuccess = New-Object System.DirectoryServices.ActiveDirectoryAuditRule($Everyone, 
+        @([System.DirectoryServices.ActiveDirectoryRights]::WriteProperty, 
+        [System.DirectoryServices.ActiveDirectoryRights]::WriteDacl, 
+        [System.DirectoryServices.ActiveDirectoryRights]::WriteOwner),
+        [System.Security.AccessControl.AuditFlags]::Success, 
+        [System.DirectoryServices.ActiveDirectorySecurityInheritance]::None)
+        
+    [System.DirectoryServices.ActiveDirectoryAuditRule[]] $Rules = @($EveryoneFail, $EveryoneSuccess)
+
+    Write-Output -InputObject $Rules
+}
+Function New-DomainControllersAuditRuleSet {
+    
+    $Everyone = New-Object System.Security.Principal.SecurityIdentifier([System.Security.Principal.WellKnownSidType]::WorldSid, $null)
+
+    $EveryoneFail = New-Object System.DirectoryServices.ActiveDirectoryAuditRule($Everyone,
+        [System.DirectoryServices.ActiveDirectoryRights]::GenericAll,
+        [System.Security.AccessControl.AuditFlags]::Failure, 
+        [System.DirectoryServices.ActiveDirectorySecurityInheritance]::None)
+
+    $EveryoneWriteDaclSuccess = New-Object System.DirectoryServices.ActiveDirectoryAuditRule($Everyone, 
+        [System.DirectoryServices.ActiveDirectoryRights]::WriteDacl, 
+        [System.Security.AccessControl.AuditFlags]::Success, 
+        [System.DirectoryServices.ActiveDirectorySecurityInheritance]::None)
+
+    $EveryoneWritePropertySuccess = New-Object System.DirectoryServices.ActiveDirectoryAuditRule($Everyone, 
+        [System.DirectoryServices.ActiveDirectoryRights]::WriteProperty, 
+        [System.Security.AccessControl.AuditFlags]::Success, 
+        [System.DirectoryServices.ActiveDirectorySecurityInheritance]::All)
+
+    [System.DirectoryServices.ActiveDirectoryAuditRule[]] $Rules = @($EveryoneFail, $EveryoneWriteDaclSuccess, $EveryoneWritePropertySuccess)
+
+    Write-Output -InputObject $Rules
+}
+Function New-InfrastructureObjectAuditRuleSet {
+    $Everyone = New-Object System.Security.Principal.SecurityIdentifier([System.Security.Principal.WellKnownSidType]::WorldSid, $null)
+
+    $EveryoneFail = New-Object System.DirectoryServices.ActiveDirectoryAuditRule($Everyone,
+        [System.DirectoryServices.ActiveDirectoryRights]::GenericAll,
+        [System.Security.AccessControl.AuditFlags]::Failure, 
+        [System.DirectoryServices.ActiveDirectorySecurityInheritance]::None)
+
+    #$objectguid = "cc17b1fb-33d9-11d2-97d4-00c04fd8d5cd" #Guid for change infrastructure master extended right if it was needed
+    $EveryoneSuccess = New-Object System.DirectoryServices.ActiveDirectoryAuditRule($Everyone,
+        @([System.DirectoryServices.ActiveDirectoryRights]::WriteProperty,
+        [System.DirectoryServices.ActiveDirectoryRights]::ExtendedRight),
+        [System.Security.AccessControl.AuditFlags]::Success,
+        [System.DirectoryServices.ActiveDirectorySecurityInheritance]::None)
+
+    [System.DirectoryServices.ActiveDirectoryAuditRule[]] $Rules = @($EveryoneFail, $EveryoneSuccess)
+
+    Write-Output -InputObject $Rules
+}
+Function New-PolicyContainerAuditRuleSet {
+
+    $Everyone = New-Object System.Security.Principal.SecurityIdentifier([System.Security.Principal.WellKnownSidType]::WorldSid, $null)
+
+    $EveryoneFail = New-Object System.DirectoryServices.ActiveDirectoryAuditRule($Everyone,
+        [System.DirectoryServices.ActiveDirectoryRights]::GenericAll,
+        [System.Security.AccessControl.AuditFlags]::Failure, 
+        [System.DirectoryServices.ActiveDirectorySecurityInheritance]::All)
+    
+    $EveryoneSuccess = New-Object System.DirectoryServices.ActiveDirectoryAuditRule($Everyone,
+        @([System.DirectoryServices.ActiveDirectoryRights]::WriteProperty,
+        [System.DirectoryServices.ActiveDirectoryRights]::WriteDacl),
+        [System.Security.AccessControl.AuditFlags]::Success,
+        [System.DirectoryServices.ActiveDirectorySecurityInheritance]::Descendents)
+
+    [System.DirectoryServices.ActiveDirectoryAuditRule[]] $Rules = @($EveryoneFail, $EveryoneSuccess)
+
+    Write-Output -InputObject $Rules
+}
+Function New-DomainAuditRuleSet {
+    Param (
+        [Parameter(Position=0,ValueFromPipeline=$true,Mandatory=$true)]
+        [System.Security.Principal.SecurityIdentifier]$DomainSID    
+    )
+
+    $Everyone = New-Object System.Security.Principal.SecurityIdentifier([System.Security.Principal.WellKnownSidType]::WorldSid, $null)
+    $DomainUsers = New-Object System.Security.Principal.SecurityIdentifier([System.Security.Principal.WellKnownSidType]::AccountDomainUsersSid, $DomainSID)
+    $Administrators = New-Object System.Security.Principal.SecurityIdentifier([System.Security.Principal.WellKnownSidType]::BuiltinAdministratorsSid, $DomainSID)
+
+    $EveryoneFail = New-Object System.DirectoryServices.ActiveDirectoryAuditRule($Everyone,
+        [System.DirectoryServices.ActiveDirectoryRights]::GenericAll,
+        [System.Security.AccessControl.AuditFlags]::Failure, 
+        [System.DirectoryServices.ActiveDirectorySecurityInheritance]::None)
+
+    $DomainUsersSuccess = New-Object System.DirectoryServices.ActiveDirectoryAuditRule($DomainUsers, 
+        [System.DirectoryServices.ActiveDirectoryRights]::ExtendedRight, 
+        [System.Security.AccessControl.AuditFlags]::Success, 
+        [System.DirectoryServices.ActiveDirectorySecurityInheritance]::None)
+
+    $AdministratorsSuccess = New-Object System.DirectoryServices.ActiveDirectoryAuditRule($Administrators, 
+        [System.DirectoryServices.ActiveDirectoryRights]::ExtendedRight, 
+        [System.Security.AccessControl.AuditFlags]::Success, 
+        [System.DirectoryServices.ActiveDirectorySecurityInheritance]::None)
+
+    $EveryoneSuccess = New-Object System.DirectoryServices.ActiveDirectoryAuditRule($Everyone, 
+        @([System.DirectoryServices.ActiveDirectoryRights]::WriteProperty,
+        [System.DirectoryServices.ActiveDirectoryRights]::WriteDacl,
+        [System.DirectoryServices.ActiveDirectoryRights]::WriteOwner), 
+        [System.Security.AccessControl.AuditFlags]::Success, 
+        [System.DirectoryServices.ActiveDirectorySecurityInheritance]::None)
+
+    [System.DirectoryServices.ActiveDirectoryAuditRule[]] $Rules = @($EveryoneFail, $DomainUsersSuccess, $AdministratorsSuccess, $EveryoneSuccess)
+
+    Write-Output -InputObject $Rules
+}
+    
+Function New-RIDManagerAuditRuleSet {
+    $Everyone = New-Object System.Security.Principal.SecurityIdentifier([System.Security.Principal.WellKnownSidType]::WorldSid, $null)
+
+    $EveryoneFail = New-Object System.DirectoryServices.ActiveDirectoryAuditRule($Everyone,
+        [System.DirectoryServices.ActiveDirectoryRights]::GenericAll,
+        [System.Security.AccessControl.AuditFlags]::Failure, 
+        [System.DirectoryServices.ActiveDirectorySecurityInheritance]::None)
+
+    $EveryoneSuccess = New-Object System.DirectoryServices.ActiveDirectoryAuditRule($Everyone,
+        @([System.DirectoryServices.ActiveDirectoryRights]::WriteProperty,
+        [System.DirectoryServices.ActiveDirectoryRights]::ExtendedRight),
+        [System.Security.AccessControl.AuditFlags]::Success,
+        [System.DirectoryServices.ActiveDirectorySecurityInheritance]::None)
+
+    [System.DirectoryServices.ActiveDirectoryAuditRule[]] $Rules = @($EveryoneFail, $EveryoneSuccess)
+
+    Write-Output -InputObject $Rules
+}
+
+Copy-Item C:\Windows\System32\GroupPolicy* C:\gp -Recurse | Out-Null
+Remove-Item C:\Windows\System32\GroupPolicy* -Recurse -Force | Out-Null
+gpupdate /force
+Write-Output "[INFO] Local Group Policy reset" 
+
+# reset domain gpos
+if ($DC) { 
+    $DomainGPO = Get-GPO -All
+    foreach ($GPO in $DomainGPO) {
+        # Prompt user to decide which GPOs to disable
+        $Ans = Read-Host "Reset $($GPO.DisplayName) (y/N)?"
+        if ($Ans.ToLower() -eq "y") {
+            $GPO.gpostatus = "AllSettingsDisabled"
+        }
+    }
+
+    # apply dc security template
+    secedit /configure /db $env:windir\security\local.sdb /cfg 'conf\dc-secpol.inf'
+
+    # import GPO (DC)
+    Import-GPO -BackupId "F4A70563-32A9-4B5F-83B2-9DBE866D54FC" -TargetName "secure-gpo" -path "conf\{F4A70563-32A9-4B5F-83B2-9DBE866D54FC}" -CreateIfNeeded
+
+    gpupdate /force
+} else {
+    # apply the security template automatically
+    secedit /configure /db $env:windir\security\local.sdb /cfg 'conf\web-secpol.inf'
+    
+    # import GPO (local)
+    ..\tools\LGPO_30\LGPO.exe /g "conf\{8DBC52E2-C1DF-4D2D-9A84-0F3760FE3147}" 
+    
+    gpupdate /force
+}
 
 # ----------- General system security ------------
 # Countering poisoning via LLMNR/NBT-NS/MDNS - Turning off LLMNR
@@ -101,40 +364,6 @@ Write-Host "[INFO] PrintNightmare mitigations in place"
 # CVE-2021-36934 (HiveNightmare/SeriousSAM) - workaround (patch at https://msrc.microsoft.com/update-guide/vulnerability/CVE-2021-36934)
 icacls $env:windir\system32\config\*.* /inheritance:e
 Write-Host "[INFO] HiveNightmare mitigations in place"
-
-# Reset Group Policies
-Copy-Item C:\Windows\System32\GroupPolicy* C:\gp -Recurse | Out-Null
-Remove-Item C:\Windows\System32\GroupPolicy* -Recurse -Force | Out-Null
-gpupdate /force
-Write-Output "[INFO] Local Group Policy reset" 
-
-# reset domain gpos
-if ($DC) { 
-    $DomainGPO = Get-GPO -All
-    foreach ($GPO in $DomainGPO) {
-        # Prompt user to decide which GPOs to disable
-        $Ans = Read-Host "Reset $($GPO.DisplayName) (y/N)?"
-        if ($Ans.ToLower() -eq "y") {
-            $GPO.gpostatus = "AllSettingsDisabled"
-        }
-    }
-
-    # apply dc security template
-    secedit /configure /db %windir%\security\local.sdb /cfg 'conf\wc-dc-secpol.inf'
-
-    # import GPO (DC)
-    Import-GPO -BackupId "C697CBFC-C192-45CF-8873-6BD96F5A8AE1" -TargetName "secure-gpo" -path "conf" -CreateIfNeeded
-
-    gpupdate /force
-} else {
-    # apply the security template automatically
-    secedit /configure /db %windir%\security\local.sdb /cfg 'conf\wc-mc-secpol.inf'
-    
-    # import GPO (local)
-    ..\tools\LGPO.exe /g "conf\{4BB1406C-78CC-44D0-B229-A1B9F6753187}" 
-    
-    gpupdate /force
-}
 
 # ----------- Defender settings ------------
 reg add "HKLM\SOFTWARE\Policies\Microsoft\Windows Defender" /v "DisableAntiSpyware" /t REG_DWORD /d 0 /f | Out-Null
@@ -221,7 +450,9 @@ ForEach ($ex_ip in (Get-MpPreference).ExclusionIpAddress) {
 Write-Host "[INFO] Defender exclusions removed"
 
 # update defender sigs in case they got yeeted
-MpCmdRun.exe -SignatureUpdate
+& 'C:\Program Files\Windows Defender\MpCmdRun.exe' -RemoveDefinitions -All
+Update-MpSignature
+Write-Host "[INFO] Defender signatures updated"
 
 # doesn't work, access denied
 reg add "HKLM\SOFTWARE\Microsoft\Windows Defender\Features" /v TamperProtection /t REG_DWORD /d 5 /f | Out-Null
@@ -302,6 +533,7 @@ reg add "HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Image File Execution 
 reg add "HKCU\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced" /v Hidden /t REG_DWORD /d 1 /f | Out-Null
 reg add "HKCU\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced" /v HideFileExt /t REG_DWORD /d 0 /f | Out-Null
 reg add "HKCU\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced" /v ShowSuperHidden /t REG_DWORD /d 1 /f | Out-Null
+
 # Disable offline files
 reg add "HKLM\SYSTEM\CurrentControlSet\Services\CSC" /v Start /t REG_DWORD /d 4 /f | Out-Null
 
@@ -328,25 +560,25 @@ reg add "HKCU\Control Panel\Accessibility\Keyboard Response" /v Flags /t REG_SZ 
 reg add "HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Authentication\LogonUI" /v ShowTabletKeyboard /t REG_DWORD /d 0 /f | Out-Null
 reg add "HKLM\SOFTWARE\Microsoft\Windows Embedded\EmbeddedLogon" /v BrandingNeutral /t REG_DWORD /d 8 /f | Out-Null
 
-# TAKEOWN /F C:\Windows\System32\sethc.exe /A | Out-Null
-# ICACLS C:\Windows\System32\sethc.exe /grant administrators:F | Out-Null
-# Remove-Item C:\Windows\System32\sethc.exe -Force | Out-Null
+TAKEOWN /F C:\Windows\System32\sethc.exe /A | Out-Null
+ICACLS C:\Windows\System32\sethc.exe /grant administrators:F | Out-Null
+Remove-Item C:\Windows\System32\sethc.exe -Force | Out-Null
 
-# TAKEOWN /F C:\Windows\System32\Utilman.exe /A | Out-Null
-# ICACLS C:\Windows\System32\Utilman.exe /grant administrators:F | Out-Null
-# Remove-Item C:\Windows\System32\Utilman.exe -Force | Out-Null
+TAKEOWN /F C:\Windows\System32\Utilman.exe /A | Out-Null
+ICACLS C:\Windows\System32\Utilman.exe /grant administrators:F | Out-Null
+Remove-Item C:\Windows\System32\Utilman.exe -Force | Out-Null
 
-# TAKEOWN /F C:\Windows\System32\osk.exe /A | Out-Null
-# ICACLS C:\Windows\System32\osk.exe /grant administrators:F | Out-Null
-# Remove-Item C:\Windows\System32\osk.exe -Force | Out-Null
+TAKEOWN /F C:\Windows\System32\osk.exe /A | Out-Null
+ICACLS C:\Windows\System32\osk.exe /grant administrators:F | Out-Null
+Remove-Item C:\Windows\System32\osk.exe -Force | Out-Null
 
-# TAKEOWN /F C:\Windows\System32\Narrator.exe /A | Out-Null
-# ICACLS C:\Windows\System32\Narrator.exe /grant administrators:F | Out-Null
-# Remove-Item C:\Windows\System32\Narrator.exe -Force | Out-Null
+TAKEOWN /F C:\Windows\System32\Narrator.exe /A | Out-Null
+ICACLS C:\Windows\System32\Narrator.exe /grant administrators:F | Out-Null
+Remove-Item C:\Windows\System32\Narrator.exe -Force | Out-Null
 
-# TAKEOWN /F C:\Windows\System32\Magnify.exe /A | Out-Null
-# ICACLS C:\Windows\System32\Magnify.exe /grant administrators:F | Out-Null
-# Remove-Item C:\Windows\System32\Magnify.exe -Force | Out-Null
+TAKEOWN /F C:\Windows\System32\Magnify.exe /A | Out-Null
+ICACLS C:\Windows\System32\Magnify.exe /grant administrators:F | Out-Null
+Remove-Item C:\Windows\System32\Magnify.exe -Force | Out-Null
 
 # AppInit_DLLs
 reg add "HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Windows" /v LoadAppInit_DLLs /t REG_DWORD /d 0 /f | Out-Null
@@ -386,6 +618,7 @@ reg add "HKLM\SYSTEM\CurrentControlSet\Services\LanmanWorkstation" /v DependOnSe
 reg add "HKLM\SYSTEM\CurrentControlSet\Control\Services\LanmanServer\Parameters" /v SMB1 /t REG_DWORD /d 0 /f | Out-Null
 ## Yeeting SMB1 as a feature
 Disable-WindowsOptionalFeature -Online -FeatureName SMB1Protocol
+Set-SmbServerConfiguration -EnableSMB2Protocol $true
 ## Strengthen SMB
 reg add "HKLM\SYSTEM\CurrentControlSet\Services\LanmanWorkstation\Parameters" /v EnablePlainTextPassword /t REG_DWORD /d 0 /f | Out-Null
 reg add "HKLM\SYSTEM\CurrentControlSet\Services\LanmanWorkstation\Parameters" /v AllowInsecureGuestAuth /t REG_DWORD /d 0 /f | Out-Null
@@ -428,10 +661,168 @@ if ($DC) {
     # DSRM
     reg add "HKLM\System\CurrentControlSet\Control\Lsa" /v DsrmAdminLogonBehavior /t REG_DWORD /d 1 /f | Out-Null
 
-    # Disable anonymous LDAP 
+    # Disable unauthenticated LDAP 
     $RootDSE = Get-ADRootDSE
     $ObjectPath = 'CN=Directory Service,CN=Windows NT,CN=Services,{0}' -f $RootDSE.ConfigurationNamingContext
     Set-ADObject -Identity $ObjectPath -Add @{ 'msDS-Other-Settings' = 'DenyUnauthenticatedBind=1'}
+
+    # setting max connection time 
+    [string]$DomainDN = Get-ADDomain -Identity (Get-ADForest -Current LoggedOnUser -Server $env:COMPUTERNAME).RootDomain -Server $env:COMPUTERNAME | Select-Object -ExpandProperty DistinguishedName
+    [System.Int32]$MaxConnIdleTime = 180
+    [string]$SearchBase = "CN=Query-Policies,CN=Directory Service,CN=Windows NT,CN=Services,CN=Configuration," + $DomainDN
+	[Microsoft.ActiveDirectory.Management.ADEntity]$Policies = get-adobject -SearchBase $SearchBase -Filter 'ObjectClass -eq "queryPolicy" -and Name -eq "Default Query Policy"' -Properties *
+	$AdminLimits = [Microsoft.ActiveDirectory.Management.ADPropertyValueCollection]$Policies.lDAPAdminLimits
+
+    for ($i = 0; $i -lt $AdminLimits.Count; $i++) {
+		if ($AdminLimits[$i] -match "MaxConnIdleTime=*") {
+			break
+		}
+	}   
+    if ($i -lt $AdminLimits.Count) {
+		$AdminLimits[$i] = "MaxConnIdleTime=$MaxConnIdleTime" 
+	} else {
+		$AdminLimits.Add("MaxConnIdleTime=$MaxConnIdleTime")
+	}
+    Set-ADObject -Identity $Policies -Clear lDAPAdminLimits
+    foreach ($Limit in $AdminLimits) {
+		Set-ADObject -Identity $Policies -Add @{lDAPAdminLimits=$Limit}
+	}
+    Write-Output -InputObject (Get-ADObject -Identity $Policies -Properties * | Select-Object -ExpandProperty lDAPAdminLimits | Where-Object {$_ -match "MaxConnIdleTime=*"})
+
+    # Setting dsHeuristics (disable anon LDAP)
+    $DN = ("CN=Directory Service,CN=Windows NT,CN=Services,CN=Configuration," + (Get-ADDomain -Identity (Get-ADForest -Current LocalComputer).RootDomain).DistinguishedName)
+    $DirectoryService = Get-ADObject -Identity $DN -Properties dsHeuristics
+    [string]$Heuristic = $DirectoryService.dsHeuristics
+
+    [array]$Array = @()
+    if (($Heuristic -ne $null) -and ($Heuristic -ne [System.String]::Empty) -and ($Heuristic.Length -ge 7)) {
+        $Array = $Heuristic.ToCharArray()
+        $Array[6] = "0";
+    } else {
+        $Array = "0000000"
+    }
+
+    [string]$Heuristic = "$Array".Replace(" ", [System.String]::Empty)
+    if ($Heuristic -ne $null -and $Heuristic -ne [System.String]::Empty) {
+        Set-ADObject -Identity $DirectoryService -Replace @{dsHeuristics = $Heuristic}
+    }
+    $Result = Get-ADObject -Identity $DirectoryService -Properties dsHeuristics | Select-Object -ExpandProperty dsHeuristics
+    if ($Result -ne $null) {
+        Write-Output ("dsHeuristics: " + $Result)
+    } else {
+        Write-Warning "dsHeuristics is not set"
+    }
+
+    # Resetting NTDS folder and file permissions
+    $BuiltinAdministrators = New-Object Security.Principal.SecurityIdentifier([System.Security.Principal.WellKnownSidType]::BuiltinAdministratorsSid, $null)
+    $System = New-Object Security.Principal.SecurityIdentifier([System.Security.Principal.WellKnownSidType]::LocalSystemSid, $null)
+    $CreatorOwner = New-Object Security.Principal.SecurityIdentifier([System.Security.Principal.WellKnownSidType]::CreatorOwnerSid, $null)
+    $LocalService = New-Object Security.Principal.SecurityIdentifier([System.Security.Principal.WellKnownSidType]::LocalServiceSid, $null)
+
+    $AdministratorAce = New-Object System.Security.AccessControl.FileSystemAccessRule($BuiltinAdministrators,
+        [System.Security.AccessControl.FileSystemRights]::FullControl,
+        @([System.Security.AccessControl.InheritanceFlags]::ObjectInherit, [System.Security.AccessControl.InheritanceFlags]::ContainerInherit),
+        [System.Security.AccessControl.PropagationFlags]::None,
+        [System.Security.AccessControl.AccessControlType]::Allow       
+    )
+
+    $SystemAce = New-Object System.Security.AccessControl.FileSystemAccessRule($System,
+        [System.Security.AccessControl.FileSystemRights]::FullControl,
+        @([System.Security.AccessControl.InheritanceFlags]::ObjectInherit, [System.Security.AccessControl.InheritanceFlags]::ContainerInherit),
+        [System.Security.AccessControl.PropagationFlags]::None,
+        [System.Security.AccessControl.AccessControlType]::Allow
+    )
+
+    $CreatorOwnerAce = New-Object System.Security.AccessControl.FileSystemAccessRule($CreatorOwner,
+        [System.Security.AccessControl.FileSystemRights]::FullControl,
+        @([System.Security.AccessControl.InheritanceFlags]::ObjectInherit, [System.Security.AccessControl.InheritanceFlags]::ContainerInherit),
+        [System.Security.AccessControl.PropagationFlags]::None,
+        [System.Security.AccessControl.AccessControlType]::Allow
+    )
+
+    $LocalServiceAce = New-Object System.Security.AccessControl.FileSystemAccessRule($LocalService,
+        @([System.Security.AccessControl.FileSystemRights]::AppendData, [System.Security.AccessControl.FileSystemRights]::CreateDirectories),
+        [System.Security.AccessControl.InheritanceFlags]::ContainerInherit,
+        [System.Security.AccessControl.PropagationFlags]::None,
+        [System.Security.AccessControl.AccessControlType]::Allow
+    )
+
+    $NTDS = Get-ItemProperty -Path "HKLM:\\System\\CurrentControlSet\\Services\\NTDS\\Parameters"
+    $DSA = $NTDS.'DSA Database File'
+    $Logs = $NTDS.'Database log files path'
+    $DSA = $DSA.Substring(0, $DSA.LastIndexOf("\"))
+    
+    $ACL1 = Get-Acl -Path $DSA
+    foreach ($Rule in $ACL1.Access) {
+        $ACL1.RemoveAccessRule($Rule) | Out-Null
+    }
+    $ACL1.AddAccessRule($AdministratorAce)
+    $ACL1.AddAccessRule($SystemAce)
+
+    Write-Host "[INFO] Setting $DSA ACL"
+
+    # need to change perms on folder to set file perms correctly
+    Set-Acl -Path $DSA -AclObject $ACL1
+    Get-ChildItem -Path $DSA | ForEach-Object {
+        $Acl = Get-Acl -Path $_.FullName
+        foreach ($Rule in $Acl.Access) {
+            if (-not $Rule.IsInherited) {
+                $Acl.RemoveAccessRule($Rule) | Out-Null
+            }
+        }
+        Set-Acl -Path $_.FullName -AclObject $Acl
+    }
+
+    # $Logs = path to the NTDS folder, so this fixes perms on that
+    $ACL2 = Get-Acl -Path $Logs
+    foreach ($Rule in $ACL2.Access) {
+        $ACL2.RemoveAccessRule($Rule) | Out-Null
+    }
+    $ACL2.AddAccessRule($AdministratorAce)
+    $ACL2.AddAccessRule($SystemAce)
+    $ACL2.AddAccessRule($LocalServiceAce)
+    $ACL2.AddAccessRule($CreatorOwnerAce)
+
+    Write-Host "[INFO] Setting $Logs ACL"
+
+    Set-Acl -Path $Logs -AclObject $ACL2
+    Get-ChildItem -Path $Logs | ForEach-Object {
+        $Acl = Get-Acl -Path $_.FullName
+        foreach ($Rule in $Acl.Access) {
+            if (-not $Rule.IsInherited) {
+                $Acl.RemoveAccessRule($Rule) | Out-Null
+            }
+        }
+        Set-Acl -Path $_.FullName -AclObject $Acl
+    }
+
+    # surely this will not break things
+    $Domain = (Get-ADDomain -Current LocalComputer).DNSRoot
+
+    # Set RID Manager Auditing
+    [System.DirectoryServices.ActiveDirectoryAuditRule[]] $Rules = New-RIDManagerAuditRuleSet
+    Set-Auditing -Domain $Domain -Rules $Rules -ObjectCN "CN=RID Manager$,CN=System"
+    Write-Host "[INFO] RID Manager Auditing Set"
+
+    [System.DirectoryServices.ActiveDirectoryAuditRule[]] $Rules = New-PolicyContainerAuditRuleSet
+    Set-Auditing -Domain $Domain -Rules $Rules -ObjectCN "CN=Policies,CN=System"
+    Write-Host "[INFO] GPO Auditing set"
+
+    [System.DirectoryServices.ActiveDirectoryAuditRule[]] $Rules = New-DomainAuditRuleSet -DomainSID (Get-ADDomain -Identity $Domain | Select-Object -ExpandProperty DomainSID)
+    Set-Auditing -Domain $Domain -Rules $Rules -ObjectCN ""
+    Write-Host "[INFO] Domain Object Auditing Set"
+
+    [System.DirectoryServices.ActiveDirectoryAuditRule[]] $Rules = New-InfrastructureObjectAuditRuleSet
+    Set-Auditing -Domain $Domain -Rules $Rules -ObjectCN "CN=Infrastructure"
+    Write-Host "[INFO] Infrastructure Object Auditing Set"
+
+    [System.DirectoryServices.ActiveDirectoryAuditRule[]] $Rules = New-DomainControllersAuditRuleSet
+    Set-Auditing -Domain $Domain -Rules $Rules -ObjectCN "OU=Domain Controllers"
+    Write-Host "[INFO] Domain Controller OU Object Auditing Set"
+
+    [System.DirectoryServices.ActiveDirectoryAuditRule[]] $Rules = New-EveryoneAuditRuleSet
+    Set-Auditing -Domain $Domain -Rules $Rules -ObjectCN "CN=AdminSDHolder,CN=System"
+    Write-Host "[INFO] AdminSDHolder Object Auditing Set"
 
     # Prevent insecure encryption suites for Kerberos (need to test)
     # reg add "HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System\Kerberos\Parameters" /v "SupportedEncryptionTypes" /t REG /d 2147483640 | Out-Null
@@ -441,6 +832,8 @@ if ($DC) {
     reg add "HKLM\SYSTEM\CurrentControlSet\Services\DNS\Parameters" /v TcpReceivePacketSize /t REG_DWORD /d 0xFF00 /f | Out-Null
     # CVE-2020-25705
     reg add "HKLM\SYSTEM\CurrentControlSet\Services\DNS\Parameters" /v MaximumUdpPacketSize /t REG_DWORD /d 0x4C5 /f | Out-Null
+    dnscmd /config /enableglobalqueryblocklist 1
+    Set-DnsServerDiagnostics -EnableLoggingForPluginDllEvent $true
     Set-DnsServerRRL -Mode Enable -Force | Out-Null
     Set-DnsServerResponseRateLimiting -ResetToDefault -Force | Out-Null
     net stop DNS
@@ -490,262 +883,3 @@ reg add "HKLM\SYSTEM\CurrentControlSet\Control\Session Manager\Environment" /v "
 # Report errors (TODO: change file path)
 $Error | Out-File $env:USERPROFILE\Desktop\hard.txt -Append -Encoding utf8
 
-# TODO: Windows Update?
-# TODO: User Auditing
-
-# :: Import secpol file here
-# :: One secpol file for "domain policy" - not editing default domain policy but creating gpo to apply across domain 
-#     :: This file will also serve as local secpol file
-#     :: Will contain account and local policies
-# set /p choice="Is this a domain controller (Y or N)? "
-# if %choice%=="N" (
-#     secedit /configure /db %windir%\security\local.sdb /cfg conf/secpol.inf
-#     gpupdate /force
-# ) else (
-#     echo:
-#     echo Skipping import of secpol file...
-#     echo: 
-#     echo Please use the Group Policy Management GUI to create a GPO and import the file into it. Make sure to do gpupdate /force after!
-#     timeout 5
-# )
-
-######### Reset Policies #########
-# Copy-Item C:\Windows\System32\GroupPolicy* C:\gp -Recurse | Out-Null
-# Remove-Item C:\Windows\System32\GroupPolicy* -Recurse -Force | Out-Null
-# gpupdate /force
-# Write-Output "$Env:ComputerName [INFO] Group Policy reset" 
-
-# # Create report
-# Get-GPOReport -All -ReportType Html -Path "C:\All-GPOs.html"
-
-# reset domain gpos
-# # Prompt user to decide which GPOs to disalbe
-# $DomainGPO = Get-GPO -All
-# foreach ($GPO in $DomainGPO) {
-#     $Ans = Read-Host "Reset $($GPO.DisplayName) (y/N)?"
-#     if ($Ans.ToLower() -eq "y") {
-#         $GPO.gpostatus = "AllSettingsDisabled"
-#     }
-# }
-# gpupdate.exe /force
-
-# :: Stopping "easy wins" for red team - following https://orange-cyberdefense.github.io/ocd-mindmaps/img/pentest_ad_dark_2022_11.svg
-
-# :: MS08-068 (placeholder as it's for older systems)
-
-# :: CVE-2019-1040 - covered by LSASS protections (LmCompatibilityLevels)
-
-# :: Enable SMB signing
-# reg add "HKLM\SYSTEM\CurrentControlSet\Services\LanmanServer\Parameters" /v EnableSecuritySignature /t REG_DWORD /d 1 /f
-# reg add "HKLM\SYSTEM\CurrentControlSet\Services\LanmanServer\Parameters" /v RequireSecuritySignature /t REG_DWORD /d 1 /f
-# reg add "HKLM\SYSTEM\CurrentControlSet\Services\LanmanWorkstation\Parameters" /v EnableSecuritySignature /t REG_DWORD /d 1 /f
-# reg add "HKLM\SYSTEM\CurrentControlSet\Services\LanmanWorkstation\Parameters" /v RequireSecuritySignature /t REG_DWORD /d 1 /f
-
-# :: Roasting of all varieties
-# :: ASREPRoast - Look for accounts with "Do not require kerberos authentication", limit perms for service accounts, detect by looking for event ID 4768 from service account
-# :: kerberoasting
-
-# :: CVE-2022-33679 - (placeholder b/c only mitigation I could find was patches, although there was a related regkey - AllowOldNt4Crypto)
-
-
-# :: Classic compromisation methods
-# :: MS17-010 - EternalBlue
-# :: (insert mitigation here)
-
-# :: MS14-025 - SYSVOL & GPP (placeholder b/c requires DC to be 2008 or 2012 and a patch - KB2962486) 
-# :: Don't set passwords via group policy ig
-
-# :: proxylogon, proxyshell (placeholder b/c no Exchange this year)
-
-
-# :: Mitigating some privesc methods
-
-# :: CVE-2020-0796 (SMBGhost) - Affects Windows build versions 1903, 1909; patch at https://portal.msrc.microsoft.com/en-US/security-guidance/advisory/CVE-2020-0796
-# :: Workaround will only work on servers, clients would have to connect to malicious SMB server
-# :: reg add "HKLM\SYSTEM\CurrentControlSet\Services\LanmanServer\Parameters" /v DisableCompression /t REG_DWORD /d 1 /f
-
-# :: CVE-2021-36934 (HiveNightmare/SeriousSAM) - workaround (patch at https://msrc.microsoft.com/update-guide/vulnerability/CVE-2021-36934)
-# icacls %windir%\system32\config\*.* /inheritance:e
-# :: delete vss shadow copies
-
-# :: RoguePotato and literally all the other potatoes and PrintSpoofer
-# :: bruh idk how to mitigate this, something about restricting service account privileges (https://assets.sentinelone.com/labs/rise-of-potatoes#page=1)
-
-# :: KrbRelayUp - literally a no fix exploit smh my head
-# :: Mitigations located at https://pyrochiliarch.com/2022/04/28/krbrelayup-mitigations/
-# :: Mitigations could break scoring/injects or might not be possible
-
-
-# :: Trying to block common things done after getting valid creds
-# :: bloodhound - dude idk
-
-# :: kerberoasting - https://www.netwrix.com/cracking_kerberos_tgs_tickets_using_kerberoasting.html
-# :: Events 4769 and 4770, look for use of RC4 encryption and large volume of requests
-# :: Reject auth requests not using Kerberos FAST
-# :: Disable insecure protocols (not sure abt this) - attribute msDs-SupportedEncryptionTypes set to 0x18
-# :: Response: quarantine and reset passwords
-
-# :: certipy - bruh idk, requires ADCS anyways
-
-# :: coercer.py - oof idk but might not be effective given SMB security settings
-
-
-# :: Known vulns that require valid creds
-# :: MS14-068
-# :: (Mitigations go here)
-
-# :: CVE-2019-0724, CVE-2019-0686 (privexchange) - placeholder b/c requires MS Exchange
-
-# :: CVE-2021-42287/CVE-2021-42278 (SamAccountName / nopac) - patching required; easy to exploit, kinda hard to detect
-# :: Limit users' abilities to join workstations to domain 
-
-# :: CVE-2021-1675 / CVE-2021-42278 (PrintNightmare)
-# reg delete "HKLM\SOFTWARE\Policies\Microsoft\Windows NT\Printers\PointAndPrint" /f
-
-# :: CVE-2022-26923 (Certifried) - placeholder b/c needs ADCS
-
-
-# :: Mitigating common things tried after getting local admin
-# :: Extracting creds from LSASS - LSASS Protections
-# reg add "HKLM\SYSTEM\CurrentControlSet\Control\Lsa" /v RunAsPPL /t REG_DWORD /d 1 /f
-# reg add "HKLM\SYSTEM\CurrentControlSet\Control\Lsa" /v LimitBlankPasswordUse /t REG_DWORD /d 1 /f
-# reg add "HKLM\SYSTEM\CurrentControlSet\Control\Lsa" /v restrictanonymous /t REG_DWORD /d 1 /f 
-# reg add "HKLM\SYSTEM\CurrentControlSet\Control\Lsa" /v restrictanonymoussam /t REG_DWORD /d 1 /f
-# reg add "HKLM\SYSTEM\CurrentControlSet\Control\Lsa" /v NoLMHash /t REG_DWORD /d 1 /f
-# reg add "HKLM\SYSTEM\CurrentControlSet\Control\Lsa" /v LMCompatibilityLevel /t REG_DWORD /d 5 /f
-# reg add "HKLM\SYSTEM\CurrentControlSet\Control\Lsa" /v SubmitControl /t REG_DWORD /d 0 /f
-# reg add "HKLM\SYSTEM\CurrentControlSet\Control\Lsa" /v disabledomaincreds /t REG_DWORD /d 1 /f 
-# reg add "HKLM\SYSTEM\CurrentControlSet\Control\Lsa" /v everyoneincludesanonymous /t REG_DWORD /d 0 /f 
-# :: Disable plain text passwords stored in LSASS
-# reg add "HKLM\SYSTEM\CurrentControlSet\Control\SecurityProviders\WDigest" /v UseLogonCredential /t REG_DWORD /d 0 /f 
-
-# :: Extracting creds from SAM, LSA - should be covered by above otherwise idk
-
-# :: dpapi extract - lol idl
-
-# :: Extract creds w/cert auth - placeholder b/c no ADCS, but still idk
-
-
-# :: Messing w/ACLs and permissions
-# :: dcsync
-
-# :: perms on groups, computers, users, gpos
-
-# :: CVE-2021-40469 - DNSadmins abuse
-# :: probs remove this from general script, specify in docs
-
-
-# :: Lateral movement attacks
-# :: Pass The Hash
-# :: https://www.netwrix.com/pass_the_hash_attack_explained.html
-
-# :: Pass The Ticket
-# :: https://www.netwrix.com/pass_the_ticket.html
-
-# :: overpass the hash
-# :: https://blog.netwrix.com/2022/10/04/overpass-the-hash-attacks/
-
-
-# :: Kerberos delegation
-# :: Unconstrained delegation
-
-# :: Contstrained delegation
-
-# :: Resource-based Constrained delegation (RBCD)
-
-
-# :: Trust relationships
-# :: Parent/child domain relations - https://www.ired.team/offensive-security-experiments/active-directory-kerberos-abuse/child-domain-da-to-ea-in-parent-domain?q=trust
-
-
-# :: Persistence
-# :: Golden Ticket - https://www.netwrix.com/how_golden_ticket_attack_works.html
-
-# :: Silver Ticket - https://www.netwrix.com/silver_ticket_attack_forged_service_tickets.html
-
-# :: Diamond Ticket??? Sapphire Ticket???
-
-
-# :: They got domain admin - rip bozo
-# :: ntds.dit extraction - https://www.netwrix.com/ntds_dit_security_active_directory.html
-
-
-
-# :: TODO: One secpol file for default domain controller policy (that contains user right assignments for DC's)
-
-# :: Done through secpol file
-# @REM :: Disable Guest user + rename
-# @REM net user Guest /active:no
-# @REM wmic useraccount where "name='Guest'" rename lettuce
-# @REM :: Rename Administrator
-# @REM wmic useraccount where "name='Administrator'" rename tomato
-
-# :: Create backup admin(s)
-# net user cucumber Passw0rd-123* /add
-# net localgroup Administrators cucumber /add
-
-# :: Most keys that exist in the SOFTWARE hive also exist under SOFTWARE\Wow6432Node but I am too lazy to add them
-
-
-# :: Stopping psexec with the power of svchost
-# reg add "HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Image File Execution Options\PSEXESVC.exe" /v Debugger /t REG_SZ /d "svchost.exe" /f
-
-# :: Securing RDP
-# reg add "HKLM\SYSTEM\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp" /v SecurityLayer /t REG_DWORD /d 2 /f
-# reg add "HKLM\SYSTEM\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp" /v UserAuthentication /t REG_DWORD /d 1 /f
-# reg add "HKLM\SYSTEM\CurrentControlSet\Control\Lsa" /v DisableRestrictedAdmin /t REG_DWORD /d 0 /f 
-# :: Disabling RDP (only if not needed)
-# ::reg add "HKLM\SYSTEM\CurrentControlSet\Control\Terminal Server" /v fDenyTSConnections /t REG_DWORD /d 1 /f
-# ::reg add "HKLM\SYSTEM\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp" /v fLogonDisabled /t REG_DWORD /d 1 /f
-
-
-
-# :: Ease of Access
-# reg add "HKCU\Control Panel\Accessibility\StickyKeys" /v Flags /t REG_SZ /d 506 /f
-# reg add "HKCU\Control Panel\Accessibility\ToggleKeys" /v Flags /t REG_SZ /d 58 /f
-# reg add "HKCU\Control Panel\Accessibility\Keyboard Response" /v Flags /t REG_SZ /d 122 /f
-# reg add "HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Authentication\LogonUI" /v ShowTabletKeyboard /t REG_DWORD /d 0 /f
-# reg add "HKLM\SOFTWARE\Microsoft\Windows Embedded\EmbeddedLogon" /v BrandingNeutral /t REG_DWORD /d 8 /f
-
-# :: Disable SMBv1
-# reg add "HKLM\SYSTEM\CurrentControlSet\Control\Services\LanmanServer\Parameters" /v SMB1 /t REG_DWORD /d 0 /f
-# :: Strengthen SMB
-# reg add "HKLM\SYSTEM\CurrentControlSet\Services\LanmanWorkstation\Parameters" /v EnablePlainTextPassword /t REG_DWORD /d 0 /f
-# reg add "HKLM\SYSTEM\CurrentControlSet\Services\LanmanWorkstation\Parameters" /v AllowInsecureGuestAuth /t REG_DWORD /d 0 /f
-# reg add "HKLM\SYSTEM\CurrentControlSet\Services\LanmanServer\Parameters" /v NullSessionPipes /t REG_MULTI_SZ /d "" /f
-# reg add "HKLM\SYSTEM\CurrentControlSet\Services\LanmanServer\Parameters" /v NullSessionShares /t REG_MULTI_SZ /d "" /f
-
-# :: UPnP
-# reg add "HKLM\SOFTWARE\Microsoft\DirectPlayNATHelp\DPNHUPnP" /v UPnPMode /t REG_DWORD /d 2 /f
-
-
-# :: AppInit_DLLs
-# reg add "HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Windows" /v LoadAppInit_DLLs /t REG_DWORD /d 0 /f
-# reg add "HKLM\SOFTWARE\Wow6432Node\Microsoft\Windows NT\CurrentVersion\Windows" /v LoadAppInit_DLLs /t REG_DWORD /d 0 /f
-# :: reg add "HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Windows" /v RequireSignedAppInit_DLLs /t REG_DWORD /d 1 /f
-
-# :: Caching logons
-# reg add "HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Winlogon" /v CachedLogonsCount /t REG_SZ /d 1
-
-# :: Remote Registry Path Denial
-# reg add "HKLM\SYSTEM\CurrentControlSet\Control\SecurePipeServers\winreg\AllowedExactPaths" /v Machine /t REG_MULTI_SZ /d "" /f
-# reg add "HKLM\SYSTEM\CurrentControlSet\Control\SecurePipeServers\winreg\AllowedPaths" /v Machine /t REG_MULTI_SZ /d "" /f
-
-# :: Not processing RunOnce List (located at HKLM\Software\Microsoft\Windows\CurrentVersion\RunOnce, in HKCU, and Wow6432Node)
-# reg add "HKLM\Software\Microsoft\Windows\CurrentVersion\Policies\Explorer" /v DisableLocalMachineRunOnce /t REG_DWORD /d 1 /f
-# reg add "HKLM\Software\Wow6432Node\Microsoft\Windows\CurrentVersion\Policies\Explorer" /v DisableLocalMachineRunOnce /t REG_DWORD /d 1 /f
-# reg add "HKCU\Software\Microsoft\Windows\CurrentVersion\Policies\Explorer" /v DisableLocalMachineRunOnce /t REG_DWORD /d 1 /f
-# reg add "HKCU\Software\Wow6432Node\Microsoft\Windows\CurrentVersion\Policies\Explorer" /v DisableLocalMachineRunOnce /t REG_DWORD /d 1 /f
-
-# :: Removing exclusions in Defender
-# powershell -Command "& { Get-MpPreference | Select-Object -Property ExclusionExtension | ForEach-Object { if ($_.ExclusionExtension -ne $null) {Remove-MpPreference -ExclusionExtension $_.ExclusionExtension}}; Get-MpPreference | Select-Object -Property ExclusionPath | ForEach-Object {if ($_.ExclusionPath -ne $null) {Remove-MpPreference -ExclusionPath $_.ExclusionPath}}; Get-MpPreference | Select-Object -Property ExclusionProcess | ForEach-Object {if ($_.ExclusionProcess -ne $null) {Remove-MpPreference -ExclusionProcess $_.ExclusionProcess}} }"
-
-# :: Yeeting things
-# @REM net share admin$ /del
-# @REM net share c$ /del
-# @REM reg delete hklm\software\microsoft\windows\currentversion\runonce /f
-# @REM reg delete hklm\software\microsoft\windows\currentversion\run /f
-# @REM del /S "C:\Users\Administrator\AppData\Roaming\Microsoft\Windows\Start Menu\Programs\Startup\*"
-# @REM del /S "C:\Users\LocalGuard\AppData\Roaming\Microsoft\Windows\Start Menu\Programs\Startup\*"
-# @REM reg delete "HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Image File Execution Options\sethc.exe" /v Debugger /f
-# @REM reg delete "HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Image File Execution Options\utilman.exe" /v Debugger /f 

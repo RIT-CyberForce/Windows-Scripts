@@ -48,8 +48,12 @@ if ($boxes -contains $boxName) {
     (New-Object System.Net.WebClient).DownloadFile("https://1.na.dl.wireshark.org/win64/Wireshark-win64-latest.exe", (Join-Path -Path $SetupPath -ChildPath "wsinstall.exe"))
     Write-Host "[" -ForegroundColor white -NoNewLine; Write-Host "SUCCESS" -ForegroundColor green -NoNewLine; Write-Host "] Wireshark installer downloaded" -ForegroundColor white
     # VSCode
-    (New-Object System.Net.WebClient).DownloadFile("https://code.visualstudio.com/sha/download?build=stable&os=win32-x64-user", (Join-Path -Path $SetupPath -ChildPath "vscodesetup.exe"))
-    Write-Host "[" -ForegroundColor white -NoNewLine; Write-Host "SUCCESS" -ForegroundColor green -NoNewLine; Write-Host "] VSCode installer downloaded" -ForegroundColor white
+    # (New-Object System.Net.WebClient).DownloadFile("https://code.visualstudio.com/sha/download?build=stable&os=win32-x64-user", (Join-Path -Path $SetupPath -ChildPath "vscodesetup.exe"))
+    # Write-Host "[" -ForegroundColor white -NoNewLine; Write-Host "SUCCESS" -ForegroundColor green -NoNewLine; Write-Host "] VSCode installer downloaded" -ForegroundColor white
+
+    # Notepad++
+    (New-Object System.Net.WebClient).DownloadFile("    https://github.com/notepad-plus-plus/notepad-plus-plus/releases/download/v8.5.8/npp.8.5.8.Installer.x64.exe", (Join-Path -Path $SetupPath -ChildPath "notepadp_installer.exe"))
+    Write-Host "[" -ForegroundColor white -NoNewLine; Write-Host "SUCCESS" -ForegroundColor green -NoNewLine; Write-Host "] Notepad++ installer downloaded" -ForegroundColor white
 
     # Get-InjectedThread
     (New-Object System.Net.WebClient).DownloadFile("https://gist.githubusercontent.com/jaredcatkinson/23905d34537ce4b5b1818c3e6405c1d2/raw/104f630cc1dda91d4cb81cf32ef0d67ccd3e0735/Get-InjectedThread.ps1", (Join-Path -Path $ScriptPath -ChildPath "Get-InjectedThread.ps1"))
@@ -94,27 +98,29 @@ if ($boxes -contains $boxName) {
         
         # specific tooling for boxes
         if ($boxName -eq $boxes[0]) { # AD/DNS
-            # TODO: Downloading GPO and security template
-            # (New-Object System.Net.WebClient).DownloadFile("https://raw.githubusercontent.com/CCDC-RIT/Windows-Scripts/master/wc/dc/wc-dc-v1.inf", (Join-Path -Path $ConfPath -ChildPath "wc-dc-secpol.inf"))
-            # (New-Object System.Net.WebClient).DownloadFile("https://raw.githubusercontent.com/CCDC-RIT/Windows-Scripts/master/wc/dc/%7B3B08545D-C4F0-4257-AAE6-4CB64523ECCA%7D.zip", (Join-Path -Path $ConfPath -ChildPath "{3B08545D-C4F0-4257-AAE6-4CB64523ECCA}.zip"))
-            # Write-Host "[" -ForegroundColor white -NoNewLine; Write-Host "SUCCESS" -ForegroundColor green -NoNewLine; Write-Host "] DC GPO and security template downloaded" -ForegroundColor white
+            # Downloading GPO and security template
+            (New-Object System.Net.WebClient).DownloadFile("https://raw.githubusercontent.com/RIT-CyberForce/Windows-Scripts/main/dc/dc-secpol.inf", (Join-Path -Path $ConfPath -ChildPath "dc-secpol.inf"))
+            (New-Object System.Net.WebClient).DownloadFile("https://github.com/RIT-CyberForce/Windows-Scripts/raw/main/dc/%7BF4A70563-32A9-4B5F-83B2-9DBE866D54FC%7D.zip", (Join-Path -Path $ConfPath -ChildPath "{F4A70563-32A9-4B5F-83B2-9DBE866D54FC}.zip"))
+            Write-Host "[" -ForegroundColor white -NoNewLine; Write-Host "SUCCESS" -ForegroundColor green -NoNewLine; Write-Host "] DC GPO and security template downloaded" -ForegroundColor white
     
-            # Expand-Archive -LiteralPath (Join-Path -Path $ConfPath -ChildPath "{3B08545D-C4F0-4257-AAE6-4CB64523ECCA}.zip") -DestinationPath (Join-Path -Path $ConfPath -ChildPath "{3B08545D-C4F0-4257-AAE6-4CB64523ECCA}")
-            # Write-Host "[" -ForegroundColor white -NoNewLine; Write-Host "SUCCESS" -ForegroundColor green -NoNewLine; Write-Host "] DC GPO extracted" -ForegroundColor white
-            (New-Object System.Net.WebClient).DownloadFile("https://raw.githubusercontent.com/RIT-CyberForce/Windows-Scripts/main/fw_dns.ps1", (Join-Path -Path $ScriptPath -ChildPath "firewall.ps1"))
- 
+            Expand-Archive -LiteralPath (Join-Path -Path $ConfPath -ChildPath "{3B08545D-C4F0-4257-AAE6-4CB64523ECCA}.zip") -DestinationPath (Join-Path -Path $ConfPath -ChildPath "{F4A70563-32A9-4B5F-83B2-9DBE866D54FC}")
+            Write-Host "[" -ForegroundColor white -NoNewLine; Write-Host "SUCCESS" -ForegroundColor green -NoNewLine; Write-Host "] DC GPO extracted" -ForegroundColor white
+            
+            (New-Object System.Net.WebClient).DownloadFile("https://raw.githubusercontent.com/RIT-CyberForce/Windows-Scripts/main/dc/fw_dns.ps1", (Join-Path -Path $ScriptPath -ChildPath "firewall.ps1"))
+            (New-Object System.Net.WebClient).DownloadFile("https://gist.githubusercontent.com/mubix/fd0c89ec021f70023695/raw/02e3f0df13aa86da41f1587ad798ad3c5e7b3711/Reset-KrbtgtKeyInteractive.ps1", (Join-Path -Path $ScriptPath -ChildPath "Reset-KrbtgtKeyInteractive.ps1"))
+            
         } else { # Task box
             (New-Object System.Net.WebClient).DownloadFile("https://download.microsoft.com/download/8/5/C/85C25433-A1B0-4FFA-9429-7E023E7DA8D8/LGPO.zip", (Join-Path -Path $InputPath -ChildPath "lg.zip"))
-            # TODO: Downloading GPO and security template 
-            # (New-Object System.Net.WebClient).DownloadFile("https://raw.githubusercontent.com/CCDC-RIT/Windows-Scripts/master/wc/member-client/wc-member-client-v6.inf", (Join-Path -Path $ConfPath -ChildPath "wc-mc-secpol.inf"))
-            # (New-Object System.Net.WebClient).DownloadFile("https://raw.githubusercontent.com/CCDC-RIT/Windows-Scripts/master/wc/member-client/%7B4BB1406C-78CC-44D0-B229-A1B9F6753187%7D.zip", (Join-Path -Path $ConfPath -ChildPath "{4BB1406C-78CC-44D0-B229-A1B9F6753187}.zip"))
+            # Downloading GPO and security template 
+            (New-Object System.Net.WebClient).DownloadFile("https://raw.githubusercontent.com/RIT-CyberForce/Windows-Scripts/main/web/web-secpol.inf", (Join-Path -Path $ConfPath -ChildPath "web-secpol.inf"))
+            (New-Object System.Net.WebClient).DownloadFile("https://github.com/RIT-CyberForce/Windows-Scripts/raw/main/web/%7B8DBC52E2-C1DF-4D2D-9A84-0F3760FE3147%7D.zip", (Join-Path -Path $ConfPath -ChildPath "{8DBC52E2-C1DF-4D2D-9A84-0F3760FE3147}.zip"))
             
-            (New-Object System.Net.WebClient).DownloadFile("https://raw.githubusercontent.com/RIT-CyberForce/Windows-Scripts/main/fw_task.ps1", (Join-Path -Path $ScriptPath -ChildPath "firewall.ps1"))
+            (New-Object System.Net.WebClient).DownloadFile("https://raw.githubusercontent.com/RIT-CyberForce/Windows-Scripts/main/web/fw_task.ps1", (Join-Path -Path $ScriptPath -ChildPath "firewall.ps1"))
 
             Write-Host "[" -ForegroundColor white -NoNewLine; Write-Host "SUCCESS" -ForegroundColor green -NoNewLine; Write-Host "] Non-DC GPO, security template, and LGPO downloaded" -ForegroundColor white
     
             Expand-Archive -LiteralPath (Join-Path -Path $InputPath -ChildPath "lg.zip") -DestinationPath $ToolsPath
-            # Expand-Archive -LiteralPath (Join-Path -Path $ConfPath -ChildPath "{4BB1406C-78CC-44D0-B229-A1B9F6753187}.zip") -DestinationPath (Join-Path -Path $ConfPath -ChildPath "{4BB1406C-78CC-44D0-B229-A1B9F6753187}")
+            Expand-Archive -LiteralPath (Join-Path -Path $ConfPath -ChildPath "{8DBC52E2-C1DF-4D2D-9A84-0F3760FE3147}.zip") -DestinationPath (Join-Path -Path $ConfPath -ChildPath "{8DBC52E2-C1DF-4D2D-9A84-0F3760FE3147}")
             Write-Host "[" -ForegroundColor white -NoNewLine; Write-Host "SUCCESS" -ForegroundColor green -NoNewLine; Write-Host "] LGPO and non-DC GPO extracted" -ForegroundColor white
         }
     }
