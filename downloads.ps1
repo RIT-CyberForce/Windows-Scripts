@@ -67,6 +67,7 @@ if ($boxes -contains $boxName) {
     (New-Object System.Net.WebClient).DownloadFile("https://raw.githubusercontent.com/olafhartong/sysmon-modular/master/sysmonconfig.xml", (Join-Path -Path $ConfPath -ChildPath "sysmon.xml"))
     # TODO: insert audit script and backup script
     # (New-Object System.Net.WebClient).DownloadFile("https://raw.githubusercontent.com/CCDC-RIT/Windows-Scripts/Colin-Dev/audit.ps1", (Join-Path -Path $ScriptPath -ChildPath "audit.ps1"))
+    (New-Object System.Net.WebClient).DownloadFile("https://raw.githubusercontent.com/RIT-CyberForce/Windows-Scripts/main/backup.ps1", (Join-Path -Path $ScriptPath -ChildPath "backup.ps1"))
     (New-Object System.Net.WebClient).DownloadFile("https://raw.githubusercontent.com/RIT-CyberForce/Windows-Scripts/main/logging.ps1", (Join-Path -Path $ScriptPath -ChildPath "logging.ps1"))
     (New-Object System.Net.WebClient).DownloadFile("https://raw.githubusercontent.com/RIT-CyberForce/Windows-Scripts/main/inventory.ps1", (Join-Path -Path $ScriptPath -ChildPath "inventory.ps1"))
     Write-Host "[" -ForegroundColor white -NoNewLine; Write-Host "SUCCESS" -ForegroundColor green -NoNewLine; Write-Host "] Monitoring scripts, config files, and Wazuh files downloaded" -ForegroundColor white
