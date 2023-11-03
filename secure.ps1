@@ -386,7 +386,7 @@ Write-Host "[INFO] Windows Defender options set"
 
 ## Exploit Guard Settings
 try {
-    Set-ProcessMitigation -PolicyFilePath conf\defender-exploit-guard-settings.xml
+    Set-ProcessMitigation -PolicyFilePath conf\def-eg-settings.xml
     Write-Output "[INFO] Exploit Guard settings set"
 } catch {
     Write-Host "[INFO] Old defender version detected, skipping Exploit Guard settings" 
@@ -613,7 +613,7 @@ Write-Host "[INFO] Misc settings set"
 ## Disable SMB1 client driver
 reg add "HKLM\SYSTEM\CurrentControlSet\Services\MrxSmb10" /v Start /t REG_DWORD /d 4 /f | Out-Null
 ## Update SMB client dependencies (removing SMB1)
-reg add "HKLM\SYSTEM\CurrentControlSet\Services\LanmanWorkstation" /v DependOnService /t REG_MULTI_SZ /d "Bowser","MRxSMB20","NSI"
+reg add "HKLM\SYSTEM\CurrentControlSet\Services\LanmanWorkstation" /v DependOnService /t REG_MULTI_SZ /d "Bowser","MRxSMB20","NSI" /f | Out-Null
 ## Disabling SMB1 server-side processing
 reg add "HKLM\SYSTEM\CurrentControlSet\Control\Services\LanmanServer\Parameters" /v SMB1 /t REG_DWORD /d 0 /f | Out-Null
 ## Yeeting SMB1 as a feature
@@ -879,7 +879,7 @@ Write-Host "[INFO] UPnP disabled"
 Disable-WindowsOptionalFeature -Online -FeatureName MicrosoftWindowsPowerShellV2Root
 
 # ----------- Constrained Language Mode ------------
-reg add "HKLM\SYSTEM\CurrentControlSet\Control\Session Manager\Environment" /v "__PSLockDownPolicy" /t REG_SZ /d 4 /f
+reg add "HKLM\SYSTEM\CurrentControlSet\Control\Session Manager\Environment" /v "__PSLockDownPolicy" /t REG_SZ /d 4 /f | Out-Null
 # Report errors (TODO: change file path)
 $Error | Out-File $env:USERPROFILE\Desktop\hard.txt -Append -Encoding utf8
 
