@@ -83,6 +83,11 @@ if ($boxes -contains $boxName) {
     (New-Object System.Net.WebClient).DownloadFile("https://download.sysinternals.com/files/Sysmon.zip", (Join-Path -Path $InputPath -ChildPath "sm.zip"))
     Write-Host "[" -ForegroundColor white -NoNewLine; Write-Host "SUCCESS" -ForegroundColor green -NoNewLine; Write-Host "] SysInternals tools downloaded" -ForegroundColor white
  
+    # Command playbook
+    (New-Object System.Net.WebClient).DownloadFile("https://raw.githubusercontent.com/RIT-CyberForce/Windows-Scripts/main/command_runbook.txt", (Join-Path -Path $ScriptPath -ChildPath "command_runbook.txt"))
+
+   
+
     if ($boxName -ne $boxes[2]) { # trad infra tools only
         # Windows Firewall Control, Malwarebytes, PatchMyPC
         (New-Object System.Net.WebClient).DownloadFile("https://www.binisoft.org/download/wfc6setup.exe", (Join-Path -Path $SetupPath -ChildPath "wfcsetup.exe"))
