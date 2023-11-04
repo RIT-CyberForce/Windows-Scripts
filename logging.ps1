@@ -56,7 +56,7 @@ if (Get-Service -Name CertSvc 2>$null) {
 }
 
 # setup wazuh agent, config file, backup
-Start-Process -FilePath ..\installers\wazuhagent.msi /q WAZUH_MANAGER="10.0.136.143" -Wait
+Start-Process -FilePath ..\installers\wazuhagent.msi -ArgumentList "/q WAZUH_MANAGER='10.0.136.143'" -Wait
 Remove-Item "C:\Program Files (x86)\ossec-agent\ossec.conf" -Force
 Copy-Item -Path "conf\ossec_windows.conf" -Destination "C:\Program Files (x86)\ossec-agent\ossec.conf"
 net start Wazuh
