@@ -22,6 +22,7 @@ if (Get-Service -Name CertSvc 2>$null) {
 
 # Securing RDP
 reg add "HKLM\SYSTEM\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp" /v SecurityLayer /t REG_DWORD /d 2 /f | Out-Null
+# setting this to 1 triggers credssp error
 reg add "HKLM\SYSTEM\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp" /v UserAuthentication /t REG_DWORD /d 1 /f | Out-Null
 reg add "HKLM\SYSTEM\CurrentControlSet\Control\Lsa" /v DisableRestrictedAdmin /t REG_DWORD /d 0 /f | Out-Null
 Write-Host "[INFO] RDP hardening in place"
@@ -612,7 +613,7 @@ Write-Host "[INFO] Misc settings set"
 # SMB protections
 ## Disable SMB1 client driver
 reg add "HKLM\SYSTEM\CurrentControlSet\Services\MrxSmb10" /v Start /t REG_DWORD /d 4 /f | Out-Null
-## Update SMB client dependencies (removing SMB1)
+## TODO: FIX - Update SMB client dependencies (removing SMB1) 
 reg add "HKLM\SYSTEM\CurrentControlSet\Services\LanmanWorkstation" /v DependOnService /t REG_MULTI_SZ /d "Bowser","MRxSMB20","NSI" /f | Out-Null
 ## Disabling SMB1 server-side processing
 reg add "HKLM\SYSTEM\CurrentControlSet\Control\Services\LanmanServer\Parameters" /v SMB1 /t REG_DWORD /d 0 /f | Out-Null

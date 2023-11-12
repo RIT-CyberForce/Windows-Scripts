@@ -37,7 +37,7 @@ Function Set-Password([string]$UserName, [bool]$IsDC) {
         exit
     } else {
         if ($IsDC) {
-            Set-ADUser -Identity $UserName -Password $Password
+            Set-ADAccountPassword -Identity $UserName -NewPassword $Password
             Write-Host "[INFO] Password set for" $UserName
         } else {
             Set-LocalUser -Name $UserName -Password $Password
